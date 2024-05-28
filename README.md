@@ -23,3 +23,11 @@ cp target/debug/libvpinball_plugin_rust.so ~/.vpinball/plugins/vpinball_plugin_r
 
 cp plugin.cfg ~/.vpinball/plugins/vpinball_plugin_rust
 ```
+
+## Patches required for the header file
+
+After downloading the header file from the vpinball repo, you need to make the following changes:
+
+* Nested `typedef` are not supported by bindgen, so you need to make `ViewSetupDef` and `TableInfo` top-level.
+* `const OptionUnit unit` needs to be changed to `const enum OptionUnit unit`.
+* Add a `#include <stdbool.h>` to the header file.
