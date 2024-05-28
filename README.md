@@ -4,7 +4,8 @@ Example of a Visual Pinball plugin written in Rust
 
 ## Visual Pinball Plugin system
 
-This is still work in progress and the API is not stable yet. All documentation is currently at
+This is still work in progress and the API is not stable yet. All documentation is currently
+at https://github.com/vpinball/vpinball/blob/10.8.1/src/plugins/VPXPlugin.h
 
 ## Installing the plugin
 
