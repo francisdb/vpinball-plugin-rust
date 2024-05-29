@@ -34,7 +34,7 @@ fn main() {
 fn download_header_file(header_file_name: &str) {
     let path = PathBuf::from(header_file_name);
 
-    let should_download = if let Ok(metadata) = metadata(&path) {
+    let should_download = if let Ok(metadata) = metadata(path) {
         let modified = metadata
             .modified()
             .expect("Failed to get modification time");
