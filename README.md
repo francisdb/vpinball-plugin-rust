@@ -10,9 +10,7 @@ at https://github.com/vpinball/vpinball/blob/10.8.1/src/plugins/VPXPlugin.h
 ## Installing the plugin
 
 ```sh
-# get the latest header file from the vpinball repo
-./download_header.sh
-# build the plugin
+# build the plugin (this will also download the vpinball plugin header)
 cargo build
 # copy the plugin to the plugin folder
 mkdir -p ~/.vpinball/plugins/vpinball_plugin_rust
@@ -24,10 +22,10 @@ cp target/debug/libvpinball_plugin_rust.so ~/.vpinball/plugins/vpinball_plugin_r
 cp plugin.cfg ~/.vpinball/plugins/vpinball_plugin_rust
 ```
 
-## Patches required for the header file
+## Header not being 100% C compatible
 
-After downloading the header file from the vpinball repo, you need to make the following changes:
+Without `-x c++` bindgen will complain about these things:
 
-* Nested `typedef` are not supported by bindgen, so you need to make `ViewSetupDef` and `TableInfo` top-level.
+* Nested `typedef` are not supported in C, so you need to make `ViewSetupDef` and `TableInfo` top-level.
 * `const OptionUnit unit` needs to be changed to `const enum OptionUnit unit`.
-* Add a `#include <stdbool.h>` to the header file.
+* Add a `#include <stdbool.h>` to the header file. (only for C89)
