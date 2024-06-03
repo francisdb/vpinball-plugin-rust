@@ -1,76 +1,32 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
+#![allow(clippy::too_many_arguments)]
+#![allow(unused)]
+#![allow(clippy::upper_case_acronyms)]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
+use log::info;
 use std::collections::HashMap;
 use std::ffi::{c_uint, CStr, CString};
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::os::raw::c_void;
-use std::sync::Arc;
-
-static mut PLUGIN: Option<Arc<VPXPlugin>> = None;
-
-pub fn get_plugin() -> Arc<VPXPlugin> {
-    unsafe { PLUGIN.as_ref().expect("Plugin not loaded").clone() }
-}
-
-unsafe extern "C" fn event_callback(event_id: c_uint, data: *mut c_void) {
-    // go through a statically registered callback back to this instance
-    get_plugin().callback(event_id, data);
-}
 
 pub struct VPXPlugin {
     vpx: *mut VPXPluginAPI,
     on_load: fn(&mut VPXPlugin) -> (),
     on_unload: fn(&mut VPXPlugin) -> (),
     //callbacks: HashMap<String, EventCallback>,
-    callbacks: HashMap<u32, Box<dyn Fn(&VPXPlugin, u32)>>,
+    callbacks: HashMap<u32, *mut c_void>,
 }
 
-// TODO If on the vpinball side we could pass a *user_data to the callback
-//   and registration functions we would be able to use this trampoline
 // https://adventures.michaelfbryan.com/posts/rust-closures-in-ffi/
 //
-// unsafe extern "C" fn trampoline<F>(event_id: c_uint, user_data: *mut c_void)
-// where
-//     F: FnMut(c_uint),
-// {
-//     let user_data = &mut *(user_data as *mut F);
-//     user_data(event_id);
-// }
-//
-// pub fn get_trampoline<F>(_closure: &F) -> EventCallback
-// where
-//     F: FnMut(c_uint),
-// {
-//     trampoline::<F>
-// }
-
-type PluginCallback = fn(&mut VPXPlugin);
-
-pub fn DoPluginLoad(api: *mut VPXPluginAPI, on_load: PluginCallback, on_unload: PluginCallback) {
-    let mut plugin = VPXPlugin::new(on_load, on_unload);
-    plugin.load(api);
-    unsafe {
-        PLUGIN = Some(Arc::new(plugin));
-    }
-}
-
-pub fn DoPluginUnload() {
-    unsafe {
-        if let Some(plugin) = PLUGIN.take() {
-            match Arc::try_unwrap(plugin) {
-                Ok(mut plugin) => {
-                    plugin.unload();
-                }
-                Err(_) => {
-                    panic!("Failed to get mutable reference to plugin");
-                }
-            }
-        }
-    }
+unsafe extern "C" fn trampoline(event_id: c_uint, user_data: *mut c_void, _data: *mut c_void) {
+    //info!("Plugin: trampoline({event_id} {user_data:?})");
+    let user_data = &mut *(user_data as *mut Box<dyn Fn(u32)>);
+    user_data(event_id);
 }
 
 #[derive(Debug)]
@@ -78,6 +34,20 @@ pub struct TableInfo {
     pub path: String,
     pub tableWidth: f32,
     pub tableHeight: f32,
+}
+
+pub enum OptionUnit {
+    None,
+    Percent,
+}
+
+impl From<OptionUnit> for VPXPluginAPI_OptionUnit {
+    fn from(unit: OptionUnit) -> Self {
+        match unit {
+            OptionUnit::None => VPXPluginAPI_OptionUnit_NONE,
+            OptionUnit::Percent => VPXPluginAPI_OptionUnit_PERCENT,
+        }
+    }
 }
 
 impl VPXPlugin {
@@ -91,7 +61,7 @@ impl VPXPlugin {
     }
 
     pub fn load(&mut self, api: *mut VPXPluginAPI) {
-        println!("load({:?})", api);
+        info!("load({:?})", api);
         // fail if already loaded
         assert!(self.vpx.is_null(), "Plugin already loaded");
         self.vpx = api;
@@ -99,15 +69,58 @@ impl VPXPlugin {
     }
 
     pub fn unload(&mut self) {
-        println!("unload()");
+        info!("unload()");
         // fail if not loaded
         assert!(!self.vpx.is_null(), "Plugin not loaded");
         (self.on_unload)(self);
+        // unsubscribe all events
+        for (event_id, callback) in self.callbacks.iter() {
+            unsafe {
+                info!("Unsubscribing for event_id {event_id}");
+                (*self.vpx).UnsubscribeEvent.unwrap()(*event_id, Some(trampoline));
+                // free the callback
+                drop(Box::from_raw(*callback as *mut Box<dyn Fn(u32)>));
+            }
+        }
+        self.callbacks.clear();
         self.vpx = std::ptr::null_mut();
     }
 
+    pub fn get_option(
+        &self,
+        page_id: &str,
+        option_id: &str,
+        show_mask: u32,
+        option_name: &str,
+        min_value: f32,
+        max_value: f32,
+        step: f32,
+        default_value: f32,
+        unit: OptionUnit,
+        values: *mut *const ::std::os::raw::c_char,
+    ) -> f32 {
+        info!("get_option({option_name})");
+        unsafe {
+            let page_id = CString::new(page_id).unwrap();
+            let option_id = CString::new(option_id).unwrap();
+            let option_name = CString::new(option_name).unwrap();
+            (*self.vpx).GetOption.unwrap()(
+                page_id.as_ptr(),
+                option_id.as_ptr(),
+                show_mask,
+                option_name.as_ptr(),
+                min_value,
+                max_value,
+                step,
+                default_value,
+                unit.into(),
+                values,
+            )
+        }
+    }
+
     pub fn push_notification(&self, message: &str, length_ms: u32) {
-        println!("push_notification({message}, {length_ms} ms)");
+        info!("push_notification({message}, {length_ms} ms)");
         let message_c = CString::new(message).unwrap();
         unsafe {
             (*self.vpx).PushNotification.unwrap()(message_c.as_ptr(), length_ms);
@@ -115,7 +128,7 @@ impl VPXPlugin {
     }
 
     pub fn broadcast_event(&self, event_name: &str) {
-        println!("broadcast_event({event_name})");
+        info!("broadcast_event({event_name})");
         let event_id_c = CString::new(event_name).unwrap();
         let event_id = unsafe { (*self.vpx).GetEventID.unwrap()(event_id_c.as_ptr()) };
         unsafe {
@@ -124,10 +137,10 @@ impl VPXPlugin {
     }
 
     pub fn get_table_info(&self) -> TableInfo {
-        println!("get_table_info()");
+        info!("get_table_info()");
         unsafe {
             // create a mutable pointer to a VPXPluginAPI_TableInfo
-            let mut table_info = VPXPluginAPI_TableInfo {
+            let mut table_info = VPXTableInfo {
                 path: std::ptr::null(),
                 tableWidth: 0.0,
                 tableHeight: 0.0,
@@ -147,11 +160,11 @@ impl VPXPlugin {
         }
     }
 
-    pub fn get_active_view_setup(&self) -> VPXPluginAPI_ViewSetupDef {
-        println!("get_active_view_setup()");
+    pub fn get_active_view_setup(&self) -> VPXViewSetupDef {
+        info!("get_active_view_setup()");
         unsafe {
             // create a mutable pointer to a VPXPluginAPI_ViewSetupDef
-            let mut view_setup = VPXPluginAPI_ViewSetupDef {
+            let mut view_setup = VPXViewSetupDef {
                 viewMode: 0,
                 sceneScaleX: 0.0,
                 sceneScaleY: 0.0,
@@ -178,38 +191,27 @@ impl VPXPlugin {
         }
     }
 
-    fn callback(&self, event_id: u32, _data: *mut c_void) {
-        // if we have a callback registered for this event_id, call it
-        if let Some(callback) = self.callbacks.get(&event_id) {
-            callback(&self, event_id);
-        }
-    }
-
-    pub fn subscribe_event(&mut self, event_name: &str, callback: Box<dyn Fn(&VPXPlugin, u32)>) {
-        println!("subscribe_event({event_name})");
+    pub fn subscribe_event(&mut self, event_name: &str, callback_closure: Box<dyn Fn(u32)>) {
+        info!("subscribe_event({event_name})");
         let event_id_c = CString::new(event_name).unwrap();
         let event_id = unsafe { (*self.vpx).GetEventID.unwrap()(event_id_c.as_ptr()) };
+        // only allow one callback per event
+        assert!(
+            !self.callbacks.contains_key(&event_id),
+            "Event {event_name} already subscribed"
+        );
 
-        // self.callbacks.insert(event_name.to_string(), trampoline);
-        // unsafe {
-        //     (*self.vpx).SubscribeEvent.unwrap()(event_id, Some(trampoline));
-        // }
-        self.callbacks.insert(event_id, callback);
+        // Wrap it again in a Box to keep it alive.
+        // Not sure why this is required, but otherwise we get 0x1 for trivial closures.
+        // see https://users.rust-lang.org/t/how-to-convert-box-dyn-fn-into-raw-pointer-and-then-call-it/104410/2
+        let wrapped = Box::new(callback_closure);
+        let user_data: *mut c_void = Box::into_raw(wrapped) as *mut c_void;
+        // can't be 0x1
+        assert_ne!(user_data as u64, 0x1, "Invalid user_data");
+        self.callbacks.insert(event_id, user_data);
         unsafe {
-            (*self.vpx).SubscribeEvent.unwrap()(event_id, Some(event_callback));
-        }
-    }
-
-    pub fn unsubscribe_event(&mut self, event_name: &str) {
-        println!("unsubscribe_event({event_name})");
-        let event_id_c = CString::new(event_name).unwrap();
-        let event_id = unsafe { (*self.vpx).GetEventID.unwrap()(event_id_c.as_ptr()) };
-        // let callback = self.callbacks.remove(event_name).unwrap();
-        // unsafe {
-        //     (*self.vpx).UnsubscribeEvent.unwrap()(event_id, Some(callback));
-        // }
-        unsafe {
-            (*self.vpx).UnsubscribeEvent.unwrap()(event_id, Some(event_callback));
+            println!("Plugin: Subscribing for event_id {event_id} with user_data {user_data:?}");
+            (*self.vpx).SubscribeEvent.unwrap()(event_id, Some(trampoline), user_data);
         }
     }
 }
@@ -225,6 +227,7 @@ pub mod tests {
             unsafe extern "C" fn subscribe_event(
                 event_id: c_uint,
                 _callback: vpxpi_event_callback,
+                _user_data: *mut std::ffi::c_void,
             ) {
                 println!("TestVPXPluginAPI::subscribe_event({event_id})");
             }

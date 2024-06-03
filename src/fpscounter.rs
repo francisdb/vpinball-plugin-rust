@@ -6,14 +6,14 @@ pub(crate) struct FPSCounter {
 }
 
 impl FPSCounter {
-    fn new() -> Self {
+    pub fn new() -> Self {
         FPSCounter {
             frame_count: 0,
             last_time: Instant::now(),
         }
     }
 
-    fn update(&mut self) -> Option<f32> {
+    pub fn update(&mut self) -> Option<f32> {
         self.frame_count += 1;
         let elapsed = self.last_time.elapsed();
         if elapsed >= Duration::from_secs(1) {
