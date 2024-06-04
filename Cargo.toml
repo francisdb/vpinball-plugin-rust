@@ -8,6 +8,8 @@ name = "vpinball_plugin_rust"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
+log = "0.4.21"
+simple_logger = "5.0.0"
 
 [build-dependencies]
 bindgen = "0.69.4"
