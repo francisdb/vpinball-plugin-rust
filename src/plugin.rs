@@ -36,7 +36,13 @@ pub trait VPXApi {
 
     fn get_active_view_setup(&self) -> VPXViewSetupDef;
 
-    fn subscribe_msg(&mut self, endpoint_id: c_uint, msg_name_space: &str, msg_name: &str, callback_closure: Box<dyn Fn(u32)>);
+    fn subscribe_msg(
+        &mut self,
+        endpoint_id: c_uint,
+        msg_name_space: &str,
+        msg_name: &str,
+        callback_closure: Box<dyn Fn(u32)>,
+    );
 }
 
 pub struct WrappedPluginApi {
@@ -78,7 +84,11 @@ impl<P: Plugin> PluginWrapper<P> {
         unsafe {
             let msg_id = (*self.api.msg).GetMsgID.unwrap()(vpxpi_name_space, vpxpi_get_api);
             // sends the pointer location of the vpx api to the plugin system for populating the vpx pointer
-            (*self.api.msg).BroadcastMsg.unwrap()(endpoint_id, msg_id, &mut self.api.vpx as *mut *mut VPXPluginAPI as *mut c_void);
+            (*self.api.msg).BroadcastMsg.unwrap()(
+                endpoint_id,
+                msg_id,
+                &mut self.api.vpx as *mut *mut VPXPluginAPI as *mut c_void,
+            );
         }
         self.plugin.on_load(&mut self.api);
     }
@@ -176,7 +186,9 @@ impl VPXApi for WrappedPluginApi {
         info!("broadcast_event({endpoint_id}, {msg_name_space}, {msg_name})");
         let msg_name_space_c = CString::new(msg_name_space).unwrap();
         let msg_name_c = CString::new(msg_name).unwrap();
-        let msg_id = unsafe { (*self.msg).GetMsgID.unwrap()(msg_name_space_c.as_ptr(), msg_name_c.as_ptr()) };
+        let msg_id = unsafe {
+            (*self.msg).GetMsgID.unwrap()(msg_name_space_c.as_ptr(), msg_name_c.as_ptr())
+        };
         unsafe {
             (*self.msg).BroadcastMsg.unwrap()(endpoint_id, msg_id, std::ptr::null_mut());
         }
@@ -213,11 +225,19 @@ impl VPXApi for WrappedPluginApi {
         }
     }
 
-    fn subscribe_msg(&mut self, endpoint_id: c_uint, msg_name_space: &str, msg_name: &str, callback_closure: Box<dyn Fn(u32)>) {
+    fn subscribe_msg(
+        &mut self,
+        endpoint_id: c_uint,
+        msg_name_space: &str,
+        msg_name: &str,
+        callback_closure: Box<dyn Fn(u32)>,
+    ) {
         info!("subscribe_event({endpoint_id}, {msg_name_space}, {msg_name})");
         let msg_name_space_c = CString::new(msg_name_space).unwrap();
         let msg_name_c = CString::new(msg_name).unwrap();
-        let message_id = unsafe { (*self.msg).GetMsgID.unwrap()(msg_name_space_c.as_ptr(), msg_name_c.as_ptr()) };
+        let message_id = unsafe {
+            (*self.msg).GetMsgID.unwrap()(msg_name_space_c.as_ptr(), msg_name_c.as_ptr())
+        };
         // only allow one callback per event
         assert!(
             !self.callbacks.contains_key(&message_id),
@@ -359,14 +379,14 @@ pub mod tests {
                 println!("TestVPXPluginAPI::subscribe_event({msg_id})");
             }
 
-            unsafe extern "C" fn unsubscribe_event(
-                msg_id: c_uint,
-                _callback: msgpi_msg_callback,
-            ) {
+            unsafe extern "C" fn unsubscribe_event(msg_id: c_uint, _callback: msgpi_msg_callback) {
                 println!("TestVPXPluginAPI::unsubscribe_event({msg_id})");
             }
 
-            unsafe extern "C" fn get_event_id(name_space: *const std::os::raw::c_char, name: *const std::os::raw::c_char) -> c_uint {
+            unsafe extern "C" fn get_event_id(
+                name_space: *const std::os::raw::c_char,
+                name: *const std::os::raw::c_char,
+            ) -> c_uint {
                 let str_name_space = CStr::from_ptr(name_space).to_str().unwrap();
                 let str_name = CStr::from_ptr(name).to_str().unwrap();
                 let event_id: i32 = match str_name {

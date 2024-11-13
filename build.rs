@@ -59,8 +59,10 @@ fn download_header_file(header_file_name: &str) {
     };
 
     if should_download {
-        let url =
-            format!("https://raw.githubusercontent.com/vpinball/vpinball/10.8.1/src/plugins/{}", header_file_name);
+        let url = format!(
+            "https://raw.githubusercontent.com/vpinball/vpinball/10.8.1/src/plugins/{}",
+            header_file_name
+        );
         eprintln!("Downloading {header_file_name} from {url}");
         let response = reqwest::blocking::get(url).expect("Failed to download file");
         assert!(

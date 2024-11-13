@@ -2,7 +2,10 @@
 mod fpscounter;
 mod plugin;
 
-use crate::plugin::{Plugin, VPXApi, MsgPluginAPI, VPXPI_EVENT_ON_GAME_END, VPXPI_EVENT_ON_GAME_START, VPXPI_EVENT_ON_PREPARE_FRAME, VPXPI_EVENT_ON_SETTINGS_CHANGED, VPXPI_NAME_SPACE};
+use crate::plugin::{
+    MsgPluginAPI, Plugin, VPXApi, VPXPI_EVENT_ON_GAME_END, VPXPI_EVENT_ON_GAME_START,
+    VPXPI_EVENT_ON_PREPARE_FRAME, VPXPI_EVENT_ON_SETTINGS_CHANGED, VPXPI_NAME_SPACE,
+};
 use log::info;
 use std::cell::RefCell;
 use std::rc::Rc;
