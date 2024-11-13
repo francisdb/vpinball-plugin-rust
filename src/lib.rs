@@ -2,10 +2,7 @@
 mod fpscounter;
 mod plugin;
 
-use crate::plugin::{
-    Plugin, VPXApi, VPXPluginAPI, EVENT_ON_GAME_END, EVENT_ON_GAME_START, EVENT_ON_PREPARE_FRAME,
-    EVENT_ON_SETTINGS_CHANGED,
-};
+use crate::plugin::{Plugin, VPXApi, MsgPluginAPI, VPXPI_EVENT_ON_GAME_END, VPXPI_EVENT_ON_GAME_START, VPXPI_EVENT_ON_PREPARE_FRAME, VPXPI_EVENT_ON_SETTINGS_CHANGED, VPXPI_NAME_SPACE};
 use log::info;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,8 +21,12 @@ impl Plugin for FpsPlugin {
     fn on_load(&mut self, vpx: &mut dyn VPXApi) {
         info!("Plugin loading");
         let fps_counter_clone = Rc::clone(&self.fps_counter);
-        vpx.subscribe_event(
-            EVENT_ON_GAME_START,
+        // TODO on the example this is the session_id that is passed on plugin
+        let endpoint_id = 0;
+        vpx.subscribe_msg(
+            endpoint_id,
+            VPXPI_NAME_SPACE,
+            VPXPI_EVENT_ON_GAME_START,
             Box::new(|event_id| {
                 info!("plugin event {event_id}: Game is starting");
                 // Game is starting (plugin can be loaded and kept alive through multiple game plays)
@@ -43,14 +44,18 @@ impl Plugin for FpsPlugin {
                 plugin.push_notification("Hello World", 5000);
             }),
         );
-        vpx.subscribe_event(
-            EVENT_ON_GAME_END,
+        vpx.subscribe_msg(
+            endpoint_id,
+            VPXPI_NAME_SPACE,
+            VPXPI_EVENT_ON_GAME_END,
             Box::new(|event_id| {
                 info!("plugin event {event_id}: Game is ending");
             }),
         );
-        vpx.subscribe_event(
-            EVENT_ON_PREPARE_FRAME,
+        vpx.subscribe_msg(
+            endpoint_id,
+            VPXPI_NAME_SPACE,
+            VPXPI_EVENT_ON_PREPARE_FRAME,
             Box::new(move |_event_id| {
                 let mut fps_counter = fps_counter_clone.borrow_mut();
                 let fps = fps_counter.update();
@@ -59,8 +64,10 @@ impl Plugin for FpsPlugin {
                 }
             }),
         );
-        vpx.subscribe_event(
-            EVENT_ON_SETTINGS_CHANGED,
+        vpx.subscribe_msg(
+            endpoint_id,
+            VPXPI_NAME_SPACE,
+            VPXPI_EVENT_ON_SETTINGS_CHANGED,
             Box::new(|_event_id| {
                 info!("Settings changed");
             }),
@@ -81,7 +88,8 @@ mod tests {
     #[test]
     fn test_plugin_load_unload() {
         let mut api = plugin::tests::TestVPXPluginAPI::init();
-        PluginLoad(&mut api);
+        let session_id = 0;
+        PluginLoad(session_id, &mut api);
 
         PluginUnload();
     }

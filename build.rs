@@ -5,16 +5,28 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 fn main() {
-    let header_file_name = "VPXPlugin.h";
+    let vpx_header_file_name = "VPXPlugin.h";
+    let msg_plugin_header_file_name = "MsgPlugin.h";
+    let core_header_file_name = "CorePlugin.h";
+    let pinmame_plugin_header_file_name = "PinMamePlugin.h";
 
     // download the header file if it does not exist or is older than 24 hours
-    download_header_file(header_file_name);
+    download_header_file(vpx_header_file_name);
+    download_header_file(msg_plugin_header_file_name);
+    download_header_file(core_header_file_name);
+    download_header_file(pinmame_plugin_header_file_name);
 
     let bindings = bindgen::Builder::default()
-        .header(header_file_name)
+        // keep this header first as only MsgPlugin.h includes BOOL definition
+        // see https://github.com/vpinball/vpinball/issues/2008
+        .header(msg_plugin_header_file_name)
+        .header(vpx_header_file_name)
+        .header(core_header_file_name)
+        .header(pinmame_plugin_header_file_name)
+        .clang_arg("-Duint8_t=unsigned char")
         //.clang_arg("-std=c99")
-        .clang_arg("-x")
-        .clang_arg("c++")
+        //.clang_arg("-x")
+        //.clang_arg("c++")
         // .clang_arg("-std=c++14")
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
@@ -48,7 +60,7 @@ fn download_header_file(header_file_name: &str) {
 
     if should_download {
         let url =
-            "https://raw.githubusercontent.com/vpinball/vpinball/10.8.1/src/plugins/VPXPlugin.h";
+            format!("https://raw.githubusercontent.com/vpinball/vpinball/10.8.1/src/plugins/{}", header_file_name);
         eprintln!("Downloading {header_file_name} from {url}");
         let response = reqwest::blocking::get(url).expect("Failed to download file");
         assert!(
