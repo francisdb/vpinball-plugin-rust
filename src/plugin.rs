@@ -252,8 +252,8 @@ impl VPXApi for WrappedPluginApi {
         // can't be 0x1
         assert_ne!(user_data as u64, 0x1, "Invalid user_data");
         self.callbacks.insert(message_id, user_data);
+        info!("Plugin: Subscribing for event_id {message_id} with user_data {user_data:?}");
         unsafe {
-            println!("Plugin: Subscribing for event_id {message_id} with user_data {user_data:?}");
             (*self.msg).SubscribeMsg.unwrap()(endpoint_id, message_id, Some(trampoline), user_data);
         }
     }
@@ -365,45 +365,60 @@ macro_rules! plugin {
 #[cfg(test)]
 pub mod tests {
     use crate::plugin::{msgpi_msg_callback, MsgPluginAPI, VPXPluginAPI};
+    use log::{info, warn};
     use std::ffi::{c_uint, CStr};
 
     pub struct TestVPXPluginAPI;
     impl TestVPXPluginAPI {
         pub fn init() -> MsgPluginAPI {
-            unsafe extern "C" fn subscribe_event(
+            unsafe extern "C" fn subscribe_msg(
                 endpoint_id: c_uint,
                 msg_id: c_uint,
                 _callback: msgpi_msg_callback,
                 _user_data: *mut std::ffi::c_void,
             ) {
-                println!("TestVPXPluginAPI::subscribe_event({msg_id})");
+                info!("TestVPXPluginAPI::subscribe_msg({msg_id})");
             }
 
-            unsafe extern "C" fn unsubscribe_event(msg_id: c_uint, _callback: msgpi_msg_callback) {
-                println!("TestVPXPluginAPI::unsubscribe_event({msg_id})");
+            unsafe extern "C" fn unsubscribe_msg(msg_id: c_uint, _callback: msgpi_msg_callback) {
+                info!("TestVPXPluginAPI::unsubscribe_msg({msg_id})");
             }
 
-            unsafe extern "C" fn get_event_id(
+            unsafe extern "C" fn get_msg_id(
                 name_space: *const std::os::raw::c_char,
                 name: *const std::os::raw::c_char,
             ) -> c_uint {
                 let str_name_space = CStr::from_ptr(name_space).to_str().unwrap();
                 let str_name = CStr::from_ptr(name).to_str().unwrap();
-                let event_id: i32 = match str_name {
-                    "VPX.OnGameStart" => 1,
-                    "VPX.OnGameEnd" => 2,
-                    "VPX.OnPrepareFrame" => 3,
-                    _ => -1,
+                let event_id: i32 = match (str_name_space, str_name) {
+                    ("VPX", "OnGameStart") => 1,
+                    ("VPX", "OnGameEnd") => 2,
+                    ("VPX", "OnPrepareFrame") => 3,
+                    ("VPX", "OnSettingsChanged") => 4,
+                    ("VPX", "GetAPI") => 5,
+                    _ => unimplemented!("Unknown event {str_name_space}:{str_name}"),
                 };
-                println!("TestVPXPluginAPI::get_event_id(\"{str_name_space}\" ,\"{str_name}\") -> {event_id}");
+                info!("TestVPXPluginAPI::get_msg_id(\"{str_name_space}\" ,\"{str_name}\") -> {event_id}");
                 event_id as c_uint
             }
 
+            unsafe extern "C" fn broadcast_msg(
+                endpoint_id: c_uint,
+                msg_id: c_uint,
+                data: *mut std::ffi::c_void,
+            ) {
+                info!("TestVPXPluginAPI::broadcast_msg({endpoint_id}, {msg_id}, {data:?})");
+                // TODO if the vpx interface is requested we should set the pointer
+                if msg_id == 5 {
+                    warn!("Requesting VPXPluginAPI pointer not implemented");
+                }
+            }
+
             MsgPluginAPI {
-                SubscribeMsg: Some(subscribe_event),
-                UnsubscribeMsg: Some(unsubscribe_event),
-                GetMsgID: Some(get_event_id),
-                BroadcastMsg: None,
+                SubscribeMsg: Some(subscribe_msg),
+                UnsubscribeMsg: Some(unsubscribe_msg),
+                GetMsgID: Some(get_msg_id),
+                BroadcastMsg: Some(broadcast_msg),
                 ReleaseMsgID: None,
                 GetSetting: None,
                 RunOnMainThread: None,
