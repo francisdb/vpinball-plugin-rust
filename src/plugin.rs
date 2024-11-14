@@ -32,22 +32,31 @@ pub trait VPXApi {
 
     fn push_notification(&self, message: &str, length_ms: u32);
 
-    fn broadcast_event(&self, event_name: &str);
+    fn broadcast_msg(&self, endpoint_id: c_uint, msg_name_space: &str, msg_name: &str);
 
     fn get_active_view_setup(&self) -> VPXViewSetupDef;
 
-    fn subscribe_event(&mut self, event_name: &str, callback_closure: Box<dyn Fn(u32)>);
+    fn subscribe_msg(
+        &mut self,
+        msg_name_space: &str,
+        msg_name: &str,
+        callback_closure: Box<dyn Fn(u32)>,
+    );
 }
 
 pub struct WrappedPluginApi {
+    session_id: c_uint,
+    msg: *mut MsgPluginAPI,
     vpx: *mut VPXPluginAPI,
     callbacks: HashMap<u32, *mut c_void>,
 }
 
 impl WrappedPluginApi {
-    pub fn new(vpx: *mut VPXPluginAPI) -> Self {
+    pub fn new(session_id: c_uint, msg: *mut MsgPluginAPI) -> Self {
         Self {
-            vpx,
+            session_id,
+            msg,
+            vpx: std::ptr::null_mut(),
             callbacks: HashMap::new(),
         }
     }
@@ -59,15 +68,26 @@ pub(crate) struct PluginWrapper<P: Plugin> {
 }
 
 impl<P: Plugin> PluginWrapper<P> {
-    pub fn new(plugin: P, vpx: *mut VPXPluginAPI) -> Self {
+    pub fn new(plugin: P, session_id: c_uint, msg: *mut MsgPluginAPI) -> Self {
         Self {
             plugin,
-            api: WrappedPluginApi::new(vpx),
+            api: WrappedPluginApi::new(session_id, msg),
         }
     }
 
     pub fn load(&mut self) {
         info!("load()");
+        let vpxpi_name_space: *const c_char = VPXPI_NAMESPACE.as_ptr() as *const c_char;
+        let vpxpi_get_api: *const c_char = VPXPI_MSG_GET_API.as_ptr() as *const c_char;
+        unsafe {
+            let msg_id = (*self.api.msg).GetMsgID.unwrap()(vpxpi_name_space, vpxpi_get_api);
+            // sends the pointer location of the vpx api to the plugin system for populating the vpx pointer
+            (*self.api.msg).BroadcastMsg.unwrap()(
+                self.api.session_id,
+                msg_id,
+                &mut self.api.vpx as *mut *mut VPXPluginAPI as *mut c_void,
+            );
+        }
         self.plugin.on_load(&mut self.api);
     }
 
@@ -78,11 +98,13 @@ impl<P: Plugin> PluginWrapper<P> {
         for (event_id, callback) in self.api.callbacks.iter() {
             unsafe {
                 info!("Unsubscribing for event_id {event_id}");
-                (*self.api.vpx).UnsubscribeEvent.unwrap()(*event_id, Some(trampoline));
+                (*self.api.msg).UnsubscribeMsg.unwrap()(*event_id, Some(trampoline));
                 // free the callback
                 drop(Box::from_raw(*callback as *mut Box<dyn Fn(u32)>));
             }
         }
+        // TODO we have to call ReleaseMsgID for all messages we looked up with GetMsgID
+        // self.api.msg.ReleaseMsgID.unwrap()(...);
         self.api.callbacks.clear();
         self.api.vpx = std::ptr::null_mut();
     }
@@ -158,12 +180,15 @@ impl VPXApi for WrappedPluginApi {
         }
     }
 
-    fn broadcast_event(&self, event_name: &str) {
-        info!("broadcast_event({event_name})");
-        let event_id_c = CString::new(event_name).unwrap();
-        let event_id = unsafe { (*self.vpx).GetEventID.unwrap()(event_id_c.as_ptr()) };
+    fn broadcast_msg(&self, endpoint_id: c_uint, msg_name_space: &str, msg_name: &str) {
+        info!("broadcast_event({endpoint_id}, {msg_name_space}, {msg_name})");
+        let msg_name_space_c = CString::new(msg_name_space).unwrap();
+        let msg_name_c = CString::new(msg_name).unwrap();
+        let msg_id = unsafe {
+            (*self.msg).GetMsgID.unwrap()(msg_name_space_c.as_ptr(), msg_name_c.as_ptr())
+        };
         unsafe {
-            (*self.vpx).BroadcastEvent.unwrap()(event_id, std::ptr::null_mut());
+            (*self.msg).BroadcastMsg.unwrap()(endpoint_id, msg_id, std::ptr::null_mut());
         }
     }
 
@@ -198,14 +223,22 @@ impl VPXApi for WrappedPluginApi {
         }
     }
 
-    fn subscribe_event(&mut self, event_name: &str, callback_closure: Box<dyn Fn(u32)>) {
-        info!("subscribe_event({event_name})");
-        let event_id_c = CString::new(event_name).unwrap();
-        let event_id = unsafe { (*self.vpx).GetEventID.unwrap()(event_id_c.as_ptr()) };
+    fn subscribe_msg(
+        &mut self,
+        msg_name_space: &str,
+        msg_name: &str,
+        callback_closure: Box<dyn Fn(u32)>,
+    ) {
+        info!("subscribe_event({msg_name_space}, {msg_name})");
+        let msg_name_space_c = CString::new(msg_name_space).unwrap();
+        let msg_name_c = CString::new(msg_name).unwrap();
+        let message_id = unsafe {
+            (*self.msg).GetMsgID.unwrap()(msg_name_space_c.as_ptr(), msg_name_c.as_ptr())
+        };
         // only allow one callback per event
         assert!(
-            !self.callbacks.contains_key(&event_id),
-            "Event {event_name} already subscribed"
+            !self.callbacks.contains_key(&message_id),
+            "Event {msg_name} already subscribed"
         );
 
         // Wrap it again in a Box to keep it alive.
@@ -215,10 +248,15 @@ impl VPXApi for WrappedPluginApi {
         let user_data: *mut c_void = Box::into_raw(wrapped) as *mut c_void;
         // can't be 0x1
         assert_ne!(user_data as u64, 0x1, "Invalid user_data");
-        self.callbacks.insert(event_id, user_data);
+        self.callbacks.insert(message_id, user_data);
+        info!("Plugin: Subscribing for event_id {message_id} with user_data {user_data:?}");
         unsafe {
-            println!("Plugin: Subscribing for event_id {event_id} with user_data {user_data:?}");
-            (*self.vpx).SubscribeEvent.unwrap()(event_id, Some(trampoline), user_data);
+            (*self.msg).SubscribeMsg.unwrap()(
+                self.session_id,
+                message_id,
+                Some(trampoline),
+                user_data,
+            );
         }
     }
 }
@@ -257,24 +295,30 @@ pub enum OptionUnit {
     Percent,
 }
 
-impl From<OptionUnit> for VPXPluginAPI_OptionUnit {
+impl From<OptionUnit> for VPPluginAPI_OptionUnit {
     fn from(unit: OptionUnit) -> Self {
         match unit {
-            OptionUnit::None => VPXPluginAPI_OptionUnit_NONE,
-            OptionUnit::Percent => VPXPluginAPI_OptionUnit_PERCENT,
+            OptionUnit::None => VPPluginAPI_OptionUnit_NONE,
+            OptionUnit::Percent => VPPluginAPI_OptionUnit_PERCENT,
         }
     }
 }
 
-pub const EVENT_ON_GAME_START: &str = "VPX.OnGameStart";
-pub const EVENT_ON_GAME_END: &str = "VPX.OnGameEnd";
-pub const EVENT_ON_PREPARE_FRAME: &str = "VPX.OnPrepareFrame";
-pub const EVENT_ON_SETTINGS_CHANGED: &str = "VPX.OnSettingsChanged";
+// TODO these should on a static level be translated from the bindings
+pub const VPXPI_NAME_SPACE: &str = "VPX";
+pub const VPXPI_EVENT_ON_GAME_START: &str = "OnGameStart";
+pub const VPXPI_EVENT_ON_GAME_END: &str = "OnGameEnd";
+pub const VPXPI_EVENT_ON_PREPARE_FRAME: &str = "OnPrepareFrame";
+pub const VPXPI_EVENT_ON_SETTINGS_CHANGED: &str = "OnSettingsChanged";
 
 #[macro_export]
 macro_rules! plugin {
     ($plugin:ident) => {
         use plugin::PluginWrapper;
+        use plugin::BOOL;
+        use std::ffi::c_uint;
+
+        const C_TRUE: BOOL = 1;
 
         // TODO is this a good idea, how can we keep track of the instance?
         /// Everything should be called from a single thread that originates on the vpinball side.
@@ -290,7 +334,7 @@ macro_rules! plugin {
         }
 
         #[no_mangle]
-        pub extern "C" fn PluginLoad(vpx: *mut VPXPluginAPI) {
+        pub extern "C" fn PluginLoad(session_id: c_uint, msg: *mut MsgPluginAPI) -> BOOL {
             simple_logger::SimpleLogger::new().env().init().unwrap();
             // fail if already loaded
             assert!(unsafe { PLUGIN.is_none() }, "Plugin already loaded");
@@ -298,10 +342,11 @@ macro_rules! plugin {
             unsafe {
                 let plugin = $plugin::new();
                 // create a wrapper around the plugin
-                let mut wrapper = PluginWrapper::new(plugin, vpx);
+                let mut wrapper = PluginWrapper::new(plugin, session_id, msg);
                 wrapper.load();
                 PLUGIN = Some(Rc::new(wrapper));
             }
+            return C_TRUE;
         }
 
         #[no_mangle]
@@ -325,51 +370,88 @@ macro_rules! plugin {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::plugin::{vpxpi_event_callback, VPXPluginAPI};
+    use crate::plugin::{msgpi_msg_callback, msgpi_timer_callback, MsgPluginAPI, VPXPluginAPI};
+    use log::{info, warn};
     use std::ffi::{c_uint, CStr};
+
+    pub const TEST_SESSION_ID: c_uint = 123;
 
     pub struct TestVPXPluginAPI;
     impl TestVPXPluginAPI {
-        pub fn init() -> VPXPluginAPI {
-            unsafe extern "C" fn subscribe_event(
-                event_id: c_uint,
-                _callback: vpxpi_event_callback,
+        pub fn init() -> MsgPluginAPI {
+            unsafe extern "C" fn subscribe_msg(
+                endpoint_id: c_uint,
+                msg_id: c_uint,
+                _callback: msgpi_msg_callback,
                 _user_data: *mut std::ffi::c_void,
             ) {
-                println!("TestVPXPluginAPI::subscribe_event({event_id})");
+                info!("TestVPXPluginAPI::subscribe_msg({msg_id})");
             }
 
-            unsafe extern "C" fn unsubscribe_event(
-                event_id: c_uint,
-                _callback: vpxpi_event_callback,
-            ) {
-                println!("TestVPXPluginAPI::unsubscribe_event({event_id})");
+            unsafe extern "C" fn unsubscribe_msg(msg_id: c_uint, _callback: msgpi_msg_callback) {
+                info!("TestVPXPluginAPI::unsubscribe_msg({msg_id})");
             }
 
-            unsafe extern "C" fn get_event_id(event_name: *const std::os::raw::c_char) -> c_uint {
-                let str_event_id = CStr::from_ptr(event_name).to_str().unwrap();
-                let event_id: i32 = match str_event_id {
-                    "VPX.OnGameStart" => 1,
-                    "VPX.OnGameEnd" => 2,
-                    "VPX.OnPrepareFrame" => 3,
-                    _ => -1,
+            unsafe extern "C" fn get_msg_id(
+                name_space: *const std::os::raw::c_char,
+                name: *const std::os::raw::c_char,
+            ) -> c_uint {
+                let str_name_space = CStr::from_ptr(name_space).to_str().unwrap();
+                let str_name = CStr::from_ptr(name).to_str().unwrap();
+                let event_id: i32 = match (str_name_space, str_name) {
+                    ("VPX", "OnGameStart") => 1,
+                    ("VPX", "OnGameEnd") => 2,
+                    ("VPX", "OnPrepareFrame") => 3,
+                    ("VPX", "OnSettingsChanged") => 4,
+                    ("VPX", "GetAPI") => 5,
+                    _ => unimplemented!("Unknown event {str_name_space}:{str_name}"),
                 };
-                println!("TestVPXPluginAPI::get_event_id(\"{str_event_id}\") -> {event_id}");
+                info!("TestVPXPluginAPI::get_msg_id(\"{str_name_space}\" ,\"{str_name}\") -> {event_id}");
                 event_id as c_uint
             }
 
-            VPXPluginAPI {
-                SubscribeEvent: Some(subscribe_event),
-                UnsubscribeEvent: Some(unsubscribe_event),
-                BroadcastEvent: None,
-                GetTableInfo: None,
-                GetEventID: Some(get_event_id),
-                PushNotification: None,
-                UpdateNotification: None,
-                DisableStaticPrerendering: None,
-                GetActiveViewSetup: None,
-                GetOption: None,
-                SetActiveViewSetup: None,
+            unsafe extern "C" fn broadcast_msg(
+                endpoint_id: c_uint,
+                msg_id: c_uint,
+                data: *mut std::ffi::c_void,
+            ) {
+                assert_eq!(endpoint_id, TEST_SESSION_ID);
+                info!("TestVPXPluginAPI::broadcast_msg({endpoint_id}, {msg_id}, {data:?})");
+                // TODO if the vpx interface is requested we should set the pointer
+                if msg_id == 5 {
+                    warn!("Requesting VPXPluginAPI pointer not implemented");
+                }
+            }
+
+            unsafe extern "C" fn release_msg_id(msg_id: c_uint) {
+                info!("TestVPXPluginAPI::release_msg_id({msg_id})");
+            }
+
+            unsafe extern "C" fn get_settings(
+                name_space: *const ::std::os::raw::c_char,
+                name: *const ::std::os::raw::c_char,
+                valueBuf: *mut ::std::os::raw::c_char,
+                valueBufSize: ::std::os::raw::c_uint,
+            ) {
+                info!("TestVPXPluginAPI::get_settings() not implemented");
+            }
+
+            unsafe extern "C" fn run_on_main_thread(
+                delayInS: f64,
+                callback: msgpi_timer_callback,
+                userData: *mut ::std::os::raw::c_void,
+            ) {
+                info!("TestVPXPluginAPI::run_on_main_thread() not implemented");
+            }
+
+            MsgPluginAPI {
+                SubscribeMsg: Some(subscribe_msg),
+                UnsubscribeMsg: Some(unsubscribe_msg),
+                GetMsgID: Some(get_msg_id),
+                BroadcastMsg: Some(broadcast_msg),
+                ReleaseMsgID: Some(release_msg_id),
+                GetSetting: Some(get_settings),
+                RunOnMainThread: Some(run_on_main_thread),
             }
         }
     }

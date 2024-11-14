@@ -12,20 +12,27 @@ at https://github.com/vpinball/vpinball/blob/10.8.1/src/plugins/VPXPlugin.h
 ```sh
 # build the plugin (this will also download the vpinball plugin header)
 cargo build
+# set the vpinball folder location env var
+export VPINBALL_FOLDER=$HOME/vpinball
 # copy the plugin to the plugin folder
-mkdir -p ~/.vpinball/plugins/vpinball_plugin_rust
+mkdir -p $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
 # Mac
-cp target/debug/libvpinball_plugin_rust.dylib ~/.vpinball/plugins/vpinball_plugin_rust
+cp target/debug/libvpinball_plugin_rust.dylib $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
 # Linux
-cp target/debug/libvpinball_plugin_rust.so ~/.vpinball/plugins/vpinball_plugin_rust
+cp target/debug/libvpinball_plugin_rust.so $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
 
-cp plugin.cfg ~/.vpinball/plugins/vpinball_plugin_rust
+cp plugin.cfg $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
 ```
 
-## Header not being 100% C compatible
+### Setting up the plugin
 
-Without `-x c++` bindgen will complain about these things:
+Add the following section to the `$HOME/.vpinball/VPinballX.ini` config file
 
-* Nested `typedef` are not supported in C, so you need to make `ViewSetupDef` and `TableInfo` top-level.
-* `const OptionUnit unit` needs to be changed to `const enum OptionUnit unit`.
-* Add a `#include <stdbool.h>` to the header file. (only for C89)
+```ini
+[Plugin.hello.world.rs]
+enable = 1
+```
+
+## Issues tracked on the vpinball repo
+
+* https://github.com/vpinball/vpinball/issues/2008
