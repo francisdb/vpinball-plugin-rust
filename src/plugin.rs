@@ -38,7 +38,6 @@ pub trait VPXApi {
 
     fn subscribe_msg(
         &mut self,
-        endpoint_id: c_uint,
         msg_name_space: &str,
         msg_name: &str,
         callback_closure: Box<dyn Fn(u32)>,
@@ -46,14 +45,16 @@ pub trait VPXApi {
 }
 
 pub struct WrappedPluginApi {
+    session_id: c_uint,
     msg: *mut MsgPluginAPI,
     vpx: *mut VPXPluginAPI,
     callbacks: HashMap<u32, *mut c_void>,
 }
 
 impl WrappedPluginApi {
-    pub fn new(msg: *mut MsgPluginAPI) -> Self {
+    pub fn new(session_id: c_uint, msg: *mut MsgPluginAPI) -> Self {
         Self {
+            session_id,
             msg,
             vpx: std::ptr::null_mut(),
             callbacks: HashMap::new(),
@@ -63,7 +64,6 @@ impl WrappedPluginApi {
 
 pub(crate) struct PluginWrapper<P: Plugin> {
     pub(crate) plugin: P,
-    session_id: c_uint,
     api: WrappedPluginApi,
 }
 
@@ -71,21 +71,19 @@ impl<P: Plugin> PluginWrapper<P> {
     pub fn new(plugin: P, session_id: c_uint, msg: *mut MsgPluginAPI) -> Self {
         Self {
             plugin,
-            session_id,
-            api: WrappedPluginApi::new(msg),
+            api: WrappedPluginApi::new(session_id, msg),
         }
     }
 
     pub fn load(&mut self) {
         info!("load()");
-        let endpoint_id = 0;
         let vpxpi_name_space: *const c_char = VPXPI_NAMESPACE.as_ptr() as *const c_char;
         let vpxpi_get_api: *const c_char = VPXPI_MSG_GET_API.as_ptr() as *const c_char;
         unsafe {
             let msg_id = (*self.api.msg).GetMsgID.unwrap()(vpxpi_name_space, vpxpi_get_api);
             // sends the pointer location of the vpx api to the plugin system for populating the vpx pointer
             (*self.api.msg).BroadcastMsg.unwrap()(
-                endpoint_id,
+                self.api.session_id,
                 msg_id,
                 &mut self.api.vpx as *mut *mut VPXPluginAPI as *mut c_void,
             );
@@ -227,12 +225,11 @@ impl VPXApi for WrappedPluginApi {
 
     fn subscribe_msg(
         &mut self,
-        endpoint_id: c_uint,
         msg_name_space: &str,
         msg_name: &str,
         callback_closure: Box<dyn Fn(u32)>,
     ) {
-        info!("subscribe_event({endpoint_id}, {msg_name_space}, {msg_name})");
+        info!("subscribe_event({msg_name_space}, {msg_name})");
         let msg_name_space_c = CString::new(msg_name_space).unwrap();
         let msg_name_c = CString::new(msg_name).unwrap();
         let message_id = unsafe {
@@ -254,7 +251,12 @@ impl VPXApi for WrappedPluginApi {
         self.callbacks.insert(message_id, user_data);
         info!("Plugin: Subscribing for event_id {message_id} with user_data {user_data:?}");
         unsafe {
-            (*self.msg).SubscribeMsg.unwrap()(endpoint_id, message_id, Some(trampoline), user_data);
+            (*self.msg).SubscribeMsg.unwrap()(
+                self.session_id,
+                message_id,
+                Some(trampoline),
+                user_data,
+            );
         }
     }
 }
@@ -313,7 +315,10 @@ pub const VPXPI_EVENT_ON_SETTINGS_CHANGED: &str = "OnSettingsChanged";
 macro_rules! plugin {
     ($plugin:ident) => {
         use plugin::PluginWrapper;
+        use plugin::BOOL;
         use std::ffi::c_uint;
+
+        const C_TRUE: BOOL = 1;
 
         // TODO is this a good idea, how can we keep track of the instance?
         /// Everything should be called from a single thread that originates on the vpinball side.
@@ -329,7 +334,7 @@ macro_rules! plugin {
         }
 
         #[no_mangle]
-        pub extern "C" fn PluginLoad(session_id: c_uint, msg: *mut MsgPluginAPI) {
+        pub extern "C" fn PluginLoad(session_id: c_uint, msg: *mut MsgPluginAPI) -> BOOL {
             simple_logger::SimpleLogger::new().env().init().unwrap();
             // fail if already loaded
             assert!(unsafe { PLUGIN.is_none() }, "Plugin already loaded");
@@ -341,6 +346,7 @@ macro_rules! plugin {
                 wrapper.load();
                 PLUGIN = Some(Rc::new(wrapper));
             }
+            return C_TRUE;
         }
 
         #[no_mangle]
@@ -364,9 +370,11 @@ macro_rules! plugin {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::plugin::{msgpi_msg_callback, MsgPluginAPI, VPXPluginAPI};
+    use crate::plugin::{msgpi_msg_callback, msgpi_timer_callback, MsgPluginAPI, VPXPluginAPI};
     use log::{info, warn};
     use std::ffi::{c_uint, CStr};
+
+    pub const TEST_SESSION_ID: c_uint = 123;
 
     pub struct TestVPXPluginAPI;
     impl TestVPXPluginAPI {
@@ -407,6 +415,7 @@ pub mod tests {
                 msg_id: c_uint,
                 data: *mut std::ffi::c_void,
             ) {
+                assert_eq!(endpoint_id, TEST_SESSION_ID);
                 info!("TestVPXPluginAPI::broadcast_msg({endpoint_id}, {msg_id}, {data:?})");
                 // TODO if the vpx interface is requested we should set the pointer
                 if msg_id == 5 {
@@ -414,14 +423,35 @@ pub mod tests {
                 }
             }
 
+            unsafe extern "C" fn release_msg_id(msg_id: c_uint) {
+                info!("TestVPXPluginAPI::release_msg_id({msg_id})");
+            }
+
+            unsafe extern "C" fn get_settings(
+                name_space: *const ::std::os::raw::c_char,
+                name: *const ::std::os::raw::c_char,
+                valueBuf: *mut ::std::os::raw::c_char,
+                valueBufSize: ::std::os::raw::c_uint,
+            ) {
+                info!("TestVPXPluginAPI::get_settings() not implemented");
+            }
+
+            unsafe extern "C" fn run_on_main_thread(
+                delayInS: f64,
+                callback: msgpi_timer_callback,
+                userData: *mut ::std::os::raw::c_void,
+            ) {
+                info!("TestVPXPluginAPI::run_on_main_thread() not implemented");
+            }
+
             MsgPluginAPI {
                 SubscribeMsg: Some(subscribe_msg),
                 UnsubscribeMsg: Some(unsubscribe_msg),
                 GetMsgID: Some(get_msg_id),
                 BroadcastMsg: Some(broadcast_msg),
-                ReleaseMsgID: None,
-                GetSetting: None,
-                RunOnMainThread: None,
+                ReleaseMsgID: Some(release_msg_id),
+                GetSetting: Some(get_settings),
+                RunOnMainThread: Some(run_on_main_thread),
             }
         }
     }

@@ -25,9 +25,7 @@ impl Plugin for FpsPlugin {
         info!("Plugin loading");
         let fps_counter_clone = Rc::clone(&self.fps_counter);
         // TODO on the example this is the session_id that is passed on plugin
-        let endpoint_id = 0;
         vpx.subscribe_msg(
-            endpoint_id,
             VPXPI_NAME_SPACE,
             VPXPI_EVENT_ON_GAME_START,
             Box::new(|event_id| {
@@ -48,7 +46,6 @@ impl Plugin for FpsPlugin {
             }),
         );
         vpx.subscribe_msg(
-            endpoint_id,
             VPXPI_NAME_SPACE,
             VPXPI_EVENT_ON_GAME_END,
             Box::new(|event_id| {
@@ -56,7 +53,6 @@ impl Plugin for FpsPlugin {
             }),
         );
         vpx.subscribe_msg(
-            endpoint_id,
             VPXPI_NAME_SPACE,
             VPXPI_EVENT_ON_PREPARE_FRAME,
             Box::new(move |_event_id| {
@@ -68,7 +64,6 @@ impl Plugin for FpsPlugin {
             }),
         );
         vpx.subscribe_msg(
-            endpoint_id,
             VPXPI_NAME_SPACE,
             VPXPI_EVENT_ON_SETTINGS_CHANGED,
             Box::new(|_event_id| {
@@ -91,7 +86,7 @@ mod tests {
     #[test]
     fn test_plugin_load_unload() {
         let mut api = plugin::tests::TestVPXPluginAPI::init();
-        let session_id = 0;
+        let session_id = plugin::tests::TEST_SESSION_ID;
         PluginLoad(session_id, &mut api);
 
         PluginUnload();
