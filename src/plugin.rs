@@ -315,10 +315,7 @@ pub const VPXPI_EVENT_ON_SETTINGS_CHANGED: &str = "OnSettingsChanged";
 macro_rules! plugin {
     ($plugin:ident) => {
         use plugin::PluginWrapper;
-        use plugin::BOOL;
         use std::ffi::c_uint;
-
-        const C_TRUE: BOOL = 1;
 
         // TODO is this a good idea, how can we keep track of the instance?
         /// Everything should be called from a single thread that originates on the vpinball side.
@@ -334,7 +331,7 @@ macro_rules! plugin {
         }
 
         #[no_mangle]
-        pub extern "C" fn PluginLoad(session_id: c_uint, msg: *mut MsgPluginAPI) -> BOOL {
+        pub extern "C" fn PluginLoad(session_id: c_uint, msg: *mut MsgPluginAPI) {
             simple_logger::SimpleLogger::new().env().init().unwrap();
             // fail if already loaded
             assert!(unsafe { PLUGIN.is_none() }, "Plugin already loaded");
@@ -346,7 +343,6 @@ macro_rules! plugin {
                 wrapper.load();
                 PLUGIN = Some(Rc::new(wrapper));
             }
-            return C_TRUE;
         }
 
         #[no_mangle]
