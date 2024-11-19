@@ -27,7 +27,10 @@ impl TestVPXPluginAPI {
             unit: VPPluginAPI_OptionUnit,
             values: *mut *const ::std::os::raw::c_char,
         ) -> f32 {
-            info!("TestVPXPluginAPI::get_option()");
+            let page_id_rust = CStr::from_ptr(pageId).to_str().unwrap();
+            let option_id_rust = CStr::from_ptr(optionId).to_str().unwrap();
+            let option_name_rust = CStr::from_ptr(optionName).to_str().unwrap();
+            info!("TestVPXPluginAPI::get_option({page_id_rust}, {option_id_rust}, {showMask}, {option_name_rust}, {minValue}, {maxValue}, {step}, {defaultValue}, {unit})");
             0.0
         }
 
@@ -105,8 +108,11 @@ impl TestMsgPluginAPI {
             info!("TestVPXPluginAPI::broadcast_msg({endpoint_id}, {msg_id} ({str_name_space}:{str_name}))");
             // TODO if the vpx interface is requested we should set the pointer
             if msg_id == 5 {
-                warn!("Requesting VPXPluginAPI pointer not implemented");
-                //data = vpx_api.as_ptr() as *mut std::ffi::c_void;
+                warn!("Requesting test VPXPluginAPI pointer currently leaks memory");
+                let bx = Box::new(TestVPXPluginAPI::init());
+                // TODO this leaks the memory, we should later use Box::from_raw to free the memory
+                //  or find a better way to handle this.
+                *(data as *mut *mut std::ffi::c_void) = Box::into_raw(bx) as *mut std::ffi::c_void;
             }
         }
 

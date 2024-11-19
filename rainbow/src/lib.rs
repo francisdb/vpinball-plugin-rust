@@ -42,13 +42,11 @@ mod tests {
     use vpinball_plugin_api::test::TEST_SESSION_ID;
     use vpinball_plugin_api::test::{TestMsgPluginAPI, TestVPXPluginAPI};
 
-    #[ignore]
     #[test]
     fn test_plugin_load_unload() {
         let vpx_api = TestVPXPluginAPI::init();
         let mut msg_api = TestMsgPluginAPI::init(&vpx_api);
         let session_id = TEST_SESSION_ID;
-        // FIXME: currently we can't set the pointer to the vpx api when a broadcast message is sent
         PluginLoad(session_id, &mut msg_api);
 
         PluginUnload();
