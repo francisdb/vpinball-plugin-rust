@@ -83,12 +83,13 @@ plugin!(FpsPlugin);
 mod tests {
     use super::*;
 
-    use vpinball_plugin_api::test::TestVPXPluginAPI;
     use vpinball_plugin_api::test::TEST_SESSION_ID;
+    use vpinball_plugin_api::test::{TestMsgPluginAPI, TestVPXPluginAPI};
 
     #[test]
     fn test_plugin_load_unload() {
-        let mut api = TestVPXPluginAPI::init();
+        let vpx_api = TestVPXPluginAPI::init();
+        let mut api = TestMsgPluginAPI::init(&vpx_api);
         let session_id = TEST_SESSION_ID;
         PluginLoad(session_id, &mut api);
 

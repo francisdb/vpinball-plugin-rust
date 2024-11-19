@@ -48,7 +48,7 @@ pub trait VPXApi {
         step: f32,
         default_value: f32,
         unit: bindings::OptionUnit,
-        values: *mut *const ::std::os::raw::c_char,
+        values: &[&str],
     ) -> f32;
 
     fn push_notification(&self, message: &str, length_ms: u32);
@@ -171,13 +171,21 @@ impl VPXApi for WrappedPluginApi {
         step: f32,
         default_value: f32,
         unit: bindings::OptionUnit,
-        values: *mut *const ::std::os::raw::c_char,
+        // array of strings
+        values: &[&str],
     ) -> f32 {
         info!("get_option({option_name})");
         unsafe {
             let page_id = CString::new(page_id).unwrap();
             let option_id = CString::new(option_id).unwrap();
             let option_name = CString::new(option_name).unwrap();
+            let raws = values
+                .into_iter()
+                .map(|s| CString::new(s.as_bytes()).unwrap().into_raw())
+                .collect::<Vec<_>>();
+            let values_ptr: *mut *const ::std::os::raw::c_char =
+                raws.as_ptr() as *mut *const ::std::os::raw::c_char;
+
             (*self.vpx).GetOption.unwrap()(
                 page_id.as_ptr(),
                 option_id.as_ptr(),
@@ -188,7 +196,7 @@ impl VPXApi for WrappedPluginApi {
                 step,
                 default_value,
                 unit.into(),
-                values,
+                values_ptr,
             )
         }
     }
