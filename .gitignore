@@ -12,7 +12,9 @@ Cargo.lock
 
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
-/VPXPlugin.h
-/MsgPlugin.h
-/CorePlugin.h
-/PinMamePlugin.h
+
+# headers from the fetched vpx sources
+/plugin/CorePlugin.h
+/plugin/MsgPlugin.h
+/plugin/PinMamePlugin.h
+/plugin/VPXPlugin.h

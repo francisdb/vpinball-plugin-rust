@@ -1,0 +1,13 @@
+[package]
+name = "vpinball-plugin-rainbow"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "vpinball_plugin_rainbow"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[dependencies]
+vpinball-plugin-api = { path = "../plugin" }
+log = "0.4.22"
+simple_logger = "5.0.0"

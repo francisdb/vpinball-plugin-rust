@@ -15,13 +15,13 @@ cargo build
 # set the vpinball folder location env var
 export VPINBALL_FOLDER=$HOME/vpinball
 # copy the plugin to the plugin folder
-mkdir -p $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
+mkdir -p $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 # Mac
-cp target/debug/libvpinball_plugin_rust.dylib $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
+cp target/debug/libvpinball_plugin_fps.dylib $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 # Linux
-cp target/debug/libvpinball_plugin_rust.so $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
+cp target/debug/libvpinball_plugin_fps.so $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 
-cp plugin.cfg $VPINBALL_FOLDER/plugins/vpinball_plugin_rust
+cp plugin.cfg $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 ```
 
 ### Setting up the plugin
