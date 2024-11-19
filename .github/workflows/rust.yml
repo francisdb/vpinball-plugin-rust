@@ -36,6 +36,6 @@ jobs:
           name: plugin-debug-${{ runner.os }}
           if-no-files-found: error
           path: |
-            target/debug/libvpinball_plugin_rust.dylib
-            target/debug/vpinball_plugin_rust.dll
-            target/debug/libvpinball_plugin_rust.so
+            target/debug/libvpinball_plugin_fps.dylib
+            target/debug/vpinball_plugin_fps.dll
+            target/debug/libvpinball_plugin_fps.so
