@@ -21,7 +21,7 @@ cp target/debug/libvpinball_plugin_fps.dylib $VPINBALL_FOLDER/plugins/vpinball_p
 # Linux
 cp target/debug/libvpinball_plugin_fps.so $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 
-cp plugin.cfg $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
+cp fpscounter/plugin.cfg $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 ```
 
 ### Setting up the plugin
@@ -29,7 +29,10 @@ cp plugin.cfg $VPINBALL_FOLDER/plugins/vpinball_plugin_fps
 Add the following section to the `$HOME/.vpinball/VPinballX.ini` config file
 
 ```ini
-[Plugin.hello.world.rs]
+[Plugin.fps]
+enable = 1
+
+[Plugin.rainbow.dmd]
 enable = 1
 ```
 
