@@ -180,7 +180,7 @@ impl VPXApi for WrappedPluginApi {
             let option_id = CString::new(option_id).unwrap();
             let option_name = CString::new(option_name).unwrap();
             let raws = values
-                .into_iter()
+                .iter()
                 .map(|s| CString::new(s.as_bytes()).unwrap().into_raw())
                 .collect::<Vec<_>>();
             let values_ptr: *mut *const ::std::os::raw::c_char =
