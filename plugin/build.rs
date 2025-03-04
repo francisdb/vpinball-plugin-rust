@@ -9,12 +9,16 @@ fn main() {
     let msg_plugin_header_file_name = "MsgPlugin.h";
     let core_header_file_name = "CorePlugin.h";
     let pinmame_plugin_header_file_name = "PinMamePlugin.h";
+    let logging_plugin_header_file_name = "LoggingPlugin.h";
+    let scriptable_plugin_header_file_name = "ScriptablePlugin.h";
 
     // download the header file if it does not exist or is older than 24 hours
     download_header_file(vpx_header_file_name);
     download_header_file(msg_plugin_header_file_name);
     download_header_file(core_header_file_name);
     download_header_file(pinmame_plugin_header_file_name);
+    download_header_file(logging_plugin_header_file_name);
+    download_header_file(scriptable_plugin_header_file_name);
 
     let bindings = bindgen::Builder::default()
         // keep this header first as only MsgPlugin.h includes BOOL definition
@@ -23,11 +27,13 @@ fn main() {
         .header(vpx_header_file_name)
         .header(core_header_file_name)
         .header(pinmame_plugin_header_file_name)
+        .header(logging_plugin_header_file_name)
+        // TODO enable this plugin, currently it requires -x c++
+        //.header(scriptable_plugin_header_file_name)
         //.clang_arg("-Duint8_t=unsigned char")
         //.clang_arg("-std=c99")
-        //.clang_arg("-x")
-        //.clang_arg("c++")
-        // .clang_arg("-std=c++14")
+        //.clang_arg("-x").clang_arg("c++")
+        //.clang_arg("-std=c++14")
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
