@@ -7,11 +7,11 @@ pub enum OptionUnit {
     Percent,
 }
 
-impl From<OptionUnit> for VPPluginAPI_OptionUnit {
+impl From<OptionUnit> for VPXPluginAPI_OptionUnit {
     fn from(unit: OptionUnit) -> Self {
         match unit {
-            OptionUnit::None => VPPluginAPI_OptionUnit_NONE,
-            OptionUnit::Percent => VPPluginAPI_OptionUnit_PERCENT,
+            OptionUnit::None => VPXPluginAPI_OptionUnit_NONE,
+            OptionUnit::Percent => VPXPluginAPI_OptionUnit_PERCENT,
         }
     }
 }

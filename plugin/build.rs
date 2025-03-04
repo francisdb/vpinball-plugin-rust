@@ -23,7 +23,7 @@ fn main() {
         .header(vpx_header_file_name)
         .header(core_header_file_name)
         .header(pinmame_plugin_header_file_name)
-        .clang_arg("-Duint8_t=unsigned char")
+        //.clang_arg("-Duint8_t=unsigned char")
         //.clang_arg("-std=c99")
         //.clang_arg("-x")
         //.clang_arg("c++")
@@ -60,7 +60,7 @@ fn download_header_file(header_file_name: &str) {
 
     if should_download {
         let url = format!(
-            "https://raw.githubusercontent.com/vpinball/vpinball/10.8.1/src/plugins/{}",
+            "https://raw.githubusercontent.com/vpinball/vpinball/master/src/plugins/{}",
             header_file_name
         );
         eprintln!("Downloading {header_file_name} from {url}");
