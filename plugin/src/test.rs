@@ -1,7 +1,7 @@
 use crate::bindings::MsgPluginAPI;
 use crate::bindings::VPXPluginAPI;
 use crate::bindings::{msgpi_msg_callback, VPXTableInfo};
-use crate::bindings::{msgpi_timer_callback, VPPluginAPI_OptionUnit};
+use crate::bindings::{msgpi_timer_callback, VPXPluginAPI_OptionUnit};
 use log::{info, warn};
 use std::ffi::{c_uint, CStr};
 
@@ -24,7 +24,7 @@ impl TestVPXPluginAPI {
             maxValue: f32,
             step: f32,
             defaultValue: f32,
-            unit: VPPluginAPI_OptionUnit,
+            unit: VPXPluginAPI_OptionUnit,
             values: *mut *const ::std::os::raw::c_char,
         ) -> f32 {
             let page_id_rust = CStr::from_ptr(pageId).to_str().unwrap();

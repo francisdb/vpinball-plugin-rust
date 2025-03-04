@@ -14,7 +14,4 @@ Cargo.lock
 *.pdb
 
 # headers from the fetched vpx sources
-/plugin/CorePlugin.h
-/plugin/MsgPlugin.h
-/plugin/PinMamePlugin.h
-/plugin/VPXPlugin.h
+/plugin/*.h
